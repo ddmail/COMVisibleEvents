@@ -4,6 +4,7 @@ using System.EnterpriseServices;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace COMVisibleEvents
@@ -15,6 +16,9 @@ namespace COMVisibleEvents
     {
         [DispId(1)]
         void OnDownloadCompleted();
+
+        [DispId(2)]
+        void OnDownloadFailed(string message);
     }
 
     [ComVisible(true)]
@@ -31,45 +35,59 @@ namespace COMVisibleEvents
     [ClassInterface(ClassInterfaceType.None)]
     [ComSourceInterfaces(typeof(IEvents))]
     [ProgId("COMVisibleEvents.DemoEvents")]
-    public class DemoEvents
-        : ServicedComponent, IDemoEvents
+    public class DemoEvents : ServicedComponent, IDemoEvents
     {
         public delegate void OnDownloadCompletedDelegate();
+        public delegate void OnDownloadFailedDelegate(string message);
 
         public event OnDownloadCompletedDelegate OnDownloadCompleted;
-        public string Address { get; private set; }
-        public string Filename { get; private set; }
+        public event OnDownloadFailedDelegate OnDownloadFailed;
 
-        public DemoEvents()
-        {
-            Debugger.Break();
-        }
-
-        private string DownloadToDirectory 
-            => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        private string FileNamePath(string filename) 
+            => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), filename);
 
         public async Task DownloadFileAsync(string address, string filename)
         {
             try
             {
-                using (WebClient webClient = new WebClient())
+                using (var webClient = new WebClient())
                 {
-                    webClient.Credentials = new NetworkCredential("user", "psw", "domain");
-                    string file = Path.Combine(DownloadToDirectory, filename);
-                    await webClient.DownloadFileTaskAsync(new Uri(address), file)
+                    await webClient
+                        .DownloadFileTaskAsync(new Uri(address), FileNamePath(filename))
                         .ContinueWith(t =>
                         {
-                            // https://stackoverflow.com/q/872323/
-                            var ev = OnDownloadCompleted;
-                            ev?.Invoke();
+                            if (t.Status == TaskStatus.Faulted)
+                            {
+                                var failed = OnDownloadFailed;
+                                failed?.Invoke(GetExceptions(t));
+                            }
+                            else
+                            {
+                                var completed = OnDownloadCompleted;
+                                completed?.Invoke();
+                            }
                         }, TaskScheduler.FromCurrentSynchronizationContext());
                 }
             }
             catch (Exception ex)
             {
-                // Log exception here ...
-                System.Diagnostics.Debug.WriteLine(ex.ToString());
+                Debug.WriteLine(ex.ToString());
             }
+
+            #region Local
+
+            string GetExceptions(Task task)
+            {
+                var innerExceptions = task.Exception?.Flatten().InnerExceptions;
+                if (innerExceptions == null)
+                    return string.Empty;
+                var builder = new StringBuilder();
+                foreach (var e in innerExceptions)
+                    builder.AppendLine(e.Message);
+                return builder.ToString();
+            }
+
+            #endregion Local
         }
     }
 }

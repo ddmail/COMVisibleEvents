@@ -5,5 +5,4 @@
 /.vs
 /COMVisibleEvents/obj
 /COMVisibleEvents/.vs/COMVisibleEvents/FileContentIndex
-/COMVisibleEvents/bin/Debug
-/COMVisibleEvents/bin/x86/Debug
+/COMVisibleEvents/bin/*
